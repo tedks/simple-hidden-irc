@@ -1,0 +1,15 @@
+# Basic Tor configuration
+DataDirectory /var/lib/tor
+Log notice stdout
+
+# Connection settings
+RunAsDaemon 0
+ControlPort 0
+
+# Hidden service configuration
+HiddenServiceDir /var/lib/tor/hidden_service/
+HiddenServicePort 6667 127.0.0.1:6667
+
+# Allow connecting to the Tor network
+SocksPort 0
+
