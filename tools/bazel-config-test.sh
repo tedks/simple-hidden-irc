@@ -26,22 +26,33 @@ fi
 mapfile -t motd_lines < <(grep -Ei '^[[:space:]]*MotdFile[[:space:]]*=' "$stage/ngircd.conf")
 [[ ${#motd_lines[@]} -eq 1 && "${motd_lines[0]}" == '    MotdFile = /etc/ngircd/motd' ]]
 sed -i "s#^    MotdFile = /etc/ngircd/motd\$#    MotdFile = $stage/motd#" "$stage/ngircd.conf"
+for key in ServerUID ServerGID; do
+  mapfile -t identity_lines < <(grep -Ei "^[[:space:]]*${key}[[:space:]]*=" "$stage/ngircd.conf")
+  [[ ${#identity_lines[@]} -eq 1 && "${identity_lines[0]}" == "    $key = irc" ]]
+done
+sed -i "s#^    ServerUID = irc\$#    ServerUID = $(id -un)#" "$stage/ngircd.conf"
+sed -i "s#^    ServerGID = irc\$#    ServerGID = $(id -gn)#" "$stage/ngircd.conf"
 
 # Replace only the two container-owned directories before asking Tor to parse.
 for expected in \
   'DataDirectory /var/lib/tor' \
   'HiddenServiceDir /var/lib/tor/hidden_service/' \
-  'SocksPort 0' 'ControlPort 0' 'RunAsDaemon 0'; do
+  'SocksPort 0' 'ControlPort 0' 'RunAsDaemon 0' 'Log notice stdout'; do
   key="${expected%% *}"
   mapfile -t found < <(grep -Ei "^[[:space:]]*${key}[[:space:]]+" "$stage/torrc.source")
   [[ ${#found[@]} -eq 1 && "${found[0]}" == "$expected" ]]
 done
+mapfile -t active_tor < <(grep -Ev '^[[:space:]]*(#|$)' "$stage/torrc.source")
+[[ ${#active_tor[@]} -eq 7 ]]
 sed -e "s#^DataDirectory /var/lib/tor\$#DataDirectory $stage/tor-data#" \
   -e "s#^HiddenServiceDir /var/lib/tor/hidden_service/\$#HiddenServiceDir $stage/hidden-service/#" \
   "$stage/torrc.source" > "$stage/torrc"
 
 tor --defaults-torrc /dev/null --verify-config -f "$stage/torrc"
-ngircd_output="$(ngircd --config "$stage/ngircd.conf" --configtest 2>&1)"
+if ! ngircd_output="$(ngircd --config "$stage/ngircd.conf" --configtest 2>&1)"; then
+  printf '%s\n' "$ngircd_output" >&2
+  exit 1
+fi
 printf '%s\n' "$ngircd_output"
 [[ "$ngircd_output" == *'Ok, dump of your server configuration follows:'* ]]
 while IFS= read -r diagnostic; do
