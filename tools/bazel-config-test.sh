@@ -7,6 +7,7 @@ trap 'rm -rf -- "$stage"' EXIT
 mkdir -m 700 "$stage/tor-data" "$stage/hidden-service"
 cp "$runfiles/ngircd.conf" "$stage/ngircd.conf"
 cp "$runfiles/torrc" "$stage/torrc.source"
+printf 'Bazel configuration fixture\n' > "$stage/motd"
 
 # Reject duplicate or extra listeners and hidden-service mappings before
 # giving the parsers the scratch copies.
@@ -18,6 +19,13 @@ irc_port="${BASH_REMATCH[1]}"
 mapfile -t hidden_ports < <(grep -Ei '^[[:space:]]*HiddenServicePort[[:space:]]+' "$stage/torrc.source")
 [[ ${#hidden_ports[@]} -eq 1 && "${hidden_ports[0]}" =~ ^HiddenServicePort[[:space:]]+([0-9]+)[[:space:]]+127\.0\.0\.1:([0-9]+)[[:space:]]*$ ]]
 [[ "${BASH_REMATCH[1]}" == "$irc_port" && "${BASH_REMATCH[2]}" == "$irc_port" ]]
+if grep -Eiq '^[[:space:]]*IncludeDir[[:space:]]*=' "$stage/ngircd.conf"; then
+  echo 'ngIRCd IncludeDir would read undeclared host configuration' >&2
+  exit 1
+fi
+mapfile -t motd_lines < <(grep -Ei '^[[:space:]]*MotdFile[[:space:]]*=' "$stage/ngircd.conf")
+[[ ${#motd_lines[@]} -eq 1 && "${motd_lines[0]}" == '    MotdFile = /etc/ngircd/motd' ]]
+sed -i "s#^    MotdFile = /etc/ngircd/motd\$#    MotdFile = $stage/motd#" "$stage/ngircd.conf"
 
 # Replace only the two container-owned directories before asking Tor to parse.
 for expected in \
@@ -38,7 +46,7 @@ printf '%s\n' "$ngircd_output"
 [[ "$ngircd_output" == *'Ok, dump of your server configuration follows:'* ]]
 while IFS= read -r diagnostic; do
   case "$diagnostic" in
-    ' - Can'"'"'t read MOTD file '*|' - No administrative information configured but required by RFC!') ;;
+    ' - No administrative information configured but required by RFC!') ;;
     *) echo "ngIRCd config diagnostic: $diagnostic" >&2; exit 1 ;;
   esac
 done < <(printf '%s\n' "$ngircd_output" | grep '^ - ' || true)
