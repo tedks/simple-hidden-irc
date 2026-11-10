@@ -1,0 +1,12 @@
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+sh_test(
+    name = "configuration_test",
+    srcs = ["tools/bazel-config-test.sh"],
+    data = [
+        "ngircd.conf",
+        "torrc",
+    ],
+    size = "small",
+    visibility = ["//visibility:public"],
+)
