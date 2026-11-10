@@ -32,5 +32,13 @@ sed -e "s#^DataDirectory /var/lib/tor\$#DataDirectory $stage/tor-data#" \
   -e "s#^HiddenServiceDir /var/lib/tor/hidden_service/\$#HiddenServiceDir $stage/hidden-service/#" \
   "$stage/torrc.source" > "$stage/torrc"
 
-tor --verify-config -f "$stage/torrc"
-ngircd --config "$stage/ngircd.conf" --configtest
+tor --defaults-torrc /dev/null --verify-config -f "$stage/torrc"
+ngircd_output="$(ngircd --config "$stage/ngircd.conf" --configtest 2>&1)"
+printf '%s\n' "$ngircd_output"
+[[ "$ngircd_output" == *'Ok, dump of your server configuration follows:'* ]]
+while IFS= read -r diagnostic; do
+  case "$diagnostic" in
+    ' - Can'"'"'t read MOTD file '*|' - No administrative information configured but required by RFC!') ;;
+    *) echo "ngIRCd config diagnostic: $diagnostic" >&2; exit 1 ;;
+  esac
+done < <(printf '%s\n' "$ngircd_output" | grep '^ - ' || true)
