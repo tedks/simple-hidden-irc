@@ -8,6 +8,9 @@ mkdir -m 700 "$stage/tor-data" "$stage/hidden-service"
 cp "$runfiles/ngircd.conf" "$stage/ngircd.conf"
 cp "$runfiles/torrc" "$stage/torrc.source"
 printf 'Bazel configuration fixture\n' > "$stage/motd"
+mapfile -t sections < <(grep -E '^[[:space:]]*\[[^]]+\]' "$stage/ngircd.conf")
+[[ ${#sections[@]} -eq 3 && "${sections[0]}" == '[Global]' && \
+  "${sections[1]}" == '[Limits]' && "${sections[2]}" == '[Options]' ]]
 
 # Reject duplicate or extra listeners and hidden-service mappings before
 # giving the parsers the scratch copies.
@@ -30,8 +33,11 @@ for key in ServerUID ServerGID; do
   mapfile -t identity_lines < <(grep -Ei "^[[:space:]]*${key}[[:space:]]*=" "$stage/ngircd.conf")
   [[ ${#identity_lines[@]} -eq 1 && "${identity_lines[0]}" == "    $key = irc" ]]
 done
-sed -i "s#^    ServerUID = irc\$#    ServerUID = $(id -un)#" "$stage/ngircd.conf"
-sed -i "s#^    ServerGID = irc\$#    ServerGID = $(id -gn)#" "$stage/ngircd.conf"
+test_user="$(id -un)"
+test_group="$(id -gn)"
+[[ -n "$test_user" && -n "$test_group" ]]
+sed -i "s#^    ServerUID = irc\$#    ServerUID = $test_user#" "$stage/ngircd.conf"
+sed -i "s#^    ServerGID = irc\$#    ServerGID = $test_group#" "$stage/ngircd.conf"
 
 # Replace only the two container-owned directories before asking Tor to parse.
 for expected in \
